@@ -4,26 +4,28 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Enums\Rol;
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
+/**
+ * Datos sintéticos para desarrollo y demostración. Uso: php artisan migrate:fresh --seed
+ */
 class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        if (app()->isProduction()) {
+            throw new RuntimeException('Los seeders de demostración no se ejecutan en producción.');
+        }
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'rol' => Rol::Admin,
+        $this->call([
+            UsuariosSeeder::class,
+            CatalogosSeeder::class,
+            InventarioInicialSeeder::class,
+            PacientesSeeder::class,
         ]);
     }
 }
