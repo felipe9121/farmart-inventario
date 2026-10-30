@@ -65,4 +65,10 @@ class Prescripcion extends Model
 
         return $this->fecha_emision->lte($hoy) && $this->vigente_hasta->gte($hoy);
     }
+
+    /** @return HasMany<Dispensacion, $this> */
+    public function dispensaciones(): HasMany
+    {
+        return $this->hasMany(Dispensacion::class);
+    }
 }
