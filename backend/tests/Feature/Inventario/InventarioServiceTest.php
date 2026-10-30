@@ -137,3 +137,37 @@ it('no deja cambios de stock ni movimientos si la transacción se revierte', fun
     expect($existencia->refresh()->cantidad)->toBe(10)
         ->and(MovimientoKardex::query()->count())->toBe($antes);
 });
+
+it('crea la existencia en la bodega destino si no existía y registra la entrada', function () {
+    $lote = Lote::factory()->create();
+    $bodega = Bodega::factory()->create();
+    $item = TrasladoItem::factory()->create(['lote_id' => $lote->id]);
+
+    $movimiento = DB::transaction(fn () => app(InventarioService::class)->registrarEntrada(
+        $bodega->id, $lote, 7, TipoMovimiento::TrasladoEntrada, User::factory()->create(), ['traslado_item_id' => $item->id],
+    ))->refresh();
+
+    $existencia = Existencia::query()->where('bodega_id', $bodega->id)->where('lote_id', $lote->id)->sole();
+    expect($existencia->cantidad)->toBe(7)
+        ->and($existencia->producto_id)->toBe($lote->producto_id)
+        ->and($movimiento->cantidad)->toBe(7)
+        ->and($movimiento->saldo_resultante)->toBe(7);
+});
+
+it('suma a la existencia que ya había', function () {
+    $existencia = existenciaDe(Producto::factory()->create(), Bodega::factory()->create(), 30, 10);
+
+    $movimiento = DB::transaction(fn () => app(InventarioService::class)->registrarEntrada(
+        $existencia->bodega_id, $existencia->lote, 5, TipoMovimiento::AjustePositivo, User::factory()->create(), motivo: 'Conteo físico',
+    ));
+
+    expect($existencia->refresh()->cantidad)->toBe(15)
+        ->and($movimiento->saldo_resultante)->toBe(15)
+        ->and(Existencia::query()->count())->toBe(1);
+});
+
+it('no registra salidas como entrada', function () {
+    DB::transaction(fn () => app(InventarioService::class)->registrarEntrada(
+        Bodega::factory()->create()->id, Lote::factory()->create(), 1, TipoMovimiento::Dispensacion, User::factory()->create(),
+    ));
+})->throws(LogicException::class, 'Entrada inválida');

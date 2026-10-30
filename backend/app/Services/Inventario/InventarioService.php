@@ -7,6 +7,7 @@ namespace App\Services\Inventario;
 use App\Enums\TipoMovimiento;
 use App\Exceptions\ReglaNegocioException;
 use App\Models\Existencia;
+use App\Models\Lote;
 use App\Models\MovimientoKardex;
 use App\Models\User;
 use App\Support\FechaNegocio;
@@ -103,13 +104,70 @@ class InventarioService
         $existencia->cantidad = $saldo;
         $existencia->save();
 
+        return $this->movimiento($existencia, $tipo, -$cantidad, $usuario, $referencia, $motivo);
+    }
+
+    /**
+     * Bloquea la existencia de un lote en una bodega. Con HOLDLOCK, si no existe se bloquea
+     * el rango: nadie más puede crearla hasta que termine la transacción.
+     */
+    public function bloquearExistencia(int $bodegaId, int $loteId): ?Existencia
+    {
+        $this->exigirTransaccion();
+
+        return Existencia::query()
+            ->where('bodega_id', $bodegaId)
+            ->where('lote_id', $loteId)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
+     * Suma stock (creando la existencia si no había) y registra el movimiento.
+     *
+     * @param  array{dispensacion_item_id?: int, traslado_item_id?: int}  $referencia
+     */
+    public function registrarEntrada(
+        int $bodegaId,
+        Lote $lote,
+        int $cantidad,
+        TipoMovimiento $tipo,
+        User $usuario,
+        array $referencia = [],
+        ?string $motivo = null,
+    ): MovimientoKardex {
+        $this->exigirTransaccion();
+
+        if ($tipo->esSalida() || $cantidad <= 0) {
+            throw new LogicException("Entrada inválida: {$tipo->value} con cantidad {$cantidad}.");
+        }
+
+        $existencia = $this->bloquearExistencia($bodegaId, $lote->id)
+            ?? Existencia::query()->create([
+                'bodega_id' => $bodegaId,
+                'producto_id' => $lote->producto_id,
+                'lote_id' => $lote->id,
+                'cantidad' => 0,
+            ]);
+
+        $existencia->cantidad += $cantidad;
+        $existencia->save();
+
+        return $this->movimiento($existencia, $tipo, $cantidad, $usuario, $referencia, $motivo);
+    }
+
+    /**
+     * @param  array{dispensacion_item_id?: int, traslado_item_id?: int}  $referencia
+     */
+    private function movimiento(Existencia $existencia, TipoMovimiento $tipo, int $cantidadConSigno, User $usuario, array $referencia, ?string $motivo): MovimientoKardex
+    {
         return MovimientoKardex::query()->create([
             'bodega_id' => $existencia->bodega_id,
             'producto_id' => $existencia->producto_id,
             'lote_id' => $existencia->lote_id,
             'tipo' => $tipo,
-            'cantidad' => -$cantidad,
-            'saldo_resultante' => $saldo,
+            'cantidad' => $cantidadConSigno,
+            'saldo_resultante' => $existencia->cantidad,
             'motivo' => $motivo,
             'dispensacion_item_id' => $referencia['dispensacion_item_id'] ?? null,
             'traslado_item_id' => $referencia['traslado_item_id'] ?? null,
