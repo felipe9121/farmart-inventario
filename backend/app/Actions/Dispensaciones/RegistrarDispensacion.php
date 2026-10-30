@@ -14,9 +14,9 @@ use App\Models\Prescripcion;
 use App\Models\PrescripcionItem;
 use App\Models\User;
 use App\Services\Inventario\InventarioService;
+use App\Support\Transaccion;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -47,9 +47,8 @@ final class RegistrarDispensacion
             : null;
 
         try {
-            $dispensacion = DB::transaction(
+            $dispensacion = Transaccion::conReintento(
                 fn () => $this->registrar($dispensador, $autorizador, $datos, $llave, $huella),
-                config()->integer('farmart.intentos_transaccion'),
             );
         } catch (UniqueConstraintViolationException $e) {
             // Una petición concurrente con la misma llave se confirmó primero: se devuelve la suya.
