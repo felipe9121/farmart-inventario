@@ -1,0 +1,45 @@
+name: farmart
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      # Obligatoria: sin ella compose falla en lugar de arrancar con una clave por defecto.
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Define MSSQL_SA_PASSWORD en .env (ver .env.example)}
+    ports:
+      - "${MSSQL_PORT:-1433}:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # $$ evita que compose interpole la variable: se expande dentro del contenedor.
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -b -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Crea las bases de la app y de pruebas (idempotente) y termina.
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Define MSSQL_SA_PASSWORD en .env (ver .env.example)}
+      DB_DATABASE: ${DB_DATABASE:-farmart}
+      DB_TEST_DATABASE: ${DB_TEST_DATABASE:-farmart_test}
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        for db in "$$DB_DATABASE" "$$DB_TEST_DATABASE"; do
+          /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -b \
+            -Q "IF DB_ID(N'$$db') IS NULL CREATE DATABASE [$$db];" || exit 1
+          echo "Base $$db lista"
+        done
+    restart: "no"
+
+volumes:
+  sqlserver-data:
