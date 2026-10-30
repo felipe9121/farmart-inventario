@@ -96,6 +96,42 @@ Idempotency-Key: 7f9c1a52-...
   "autorizacion": { "email": "regente1@farmart.test", "password": "..." } }
 ```
 
+### Traslados, kardex y ajustes
+- **Máquina de estados en `EstadoTraslado`** (RN-07): `BORRADOR → SOLICITADO → APROBADO → EN_TRANSITO →
+  RECIBIDO | RECIBIDO_PARCIAL`. Se puede pasar a `ANULADO` solo antes del despacho. La BD valida que cada
+  estado tenga sus responsables, y la aplicación valida la transición.
+- **Cada transición bloquea primero el traslado** y valida el estado con la fila bloqueada. Si dos
+  regentes aprueban a la vez, uno gana y el otro recibe **409** `TRANSICION_INVALIDA`.
+- **RN-08:** solo los regentes aprueban, y nunca el mismo usuario que solicitó (403 `APROBADOR_ES_SOLICITANTE`,
+  respaldado por el CHECK).
+- **Supuesto: cada ítem es un lote concreto, elegido al solicitar.** Al crear se revisa el stock como aviso
+  temprano; la verificación definitiva es al despachar, con la fila bloqueada. El lote vencido se rechaza
+  tanto al crear como al despachar (RN-01).
+- **El despacho saca el stock del origen** (`TRASLADO_SALIDA`) y permite despachar menos de lo solicitado
+  por ítem, incluso 0. Si un ítem falla, no se mueve nada.
+- **La recepción entra el stock al destino** (`TRASLADO_ENTRADA`) y crea la existencia si no había. Hay que
+  informar cada ítem, aunque sea con 0. Lo despachado y no recibido queda como **discrepancia pendiente**
+  (columna calculada) y el traslado pasa a `RECIBIDO_PARCIAL`. Esas unidades no vuelven al origen; si
+  aparecen después, se corrigen con un ajuste.
+- **Orden de bloqueo común** con dispensación: primero el documento (prescripción o traslado), luego sus
+  ítems por id y luego las existencias por `producto_id` e id de existencia. En traslados se leen los ids
+  sin bloquear, se ordenan y después se bloquean, para no cruzarse con una dispensación del mismo producto.
+- **Ajustes (RN-06):** `POST /api/ajustes`, solo para regentes, con motivo obligatorio. Son la única forma
+  de corregir stock, porque el kardex no se edita. Permiten dar de baja lotes vencidos. Los ajustes no usan
+  `Idempotency-Key`, ya que RN-09 solo lo exige para dispensaciones; una UI que reintente debería evitar
+  el doble envío.
+- **Kardex:** `GET /api/kardex`, con filtros por bodega, producto, lote, tipo y fechas, ordenado por id
+  (el orden real de registro).
+
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/api/traslados`, `/api/traslados/{id}` | auxiliar, regente, auditor, admin |
+| POST | `/api/traslados`, `/{id}/solicitar`, `/{id}/despachar`, `/{id}/recibir` | auxiliar, regente |
+| POST | `/api/traslados/{id}/aprobar` | regente (≠ solicitante) |
+| POST | `/api/traslados/{id}/anular` | creador o regente |
+| POST | `/api/ajustes` | regente |
+| GET | `/api/kardex` | auxiliar, regente, auditor, admin |
+
 ### Pruebas
 - `./vendor/bin/pest` corre todo. `--testsuite=Concurrencia` corre solo las pruebas con procesos PHP
   paralelos (`Concurrency::run`). Esa suite no usa `RefreshDatabase`, porque los otros procesos deben
