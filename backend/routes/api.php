@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AlertaController;
 use App\Http\Controllers\Api\AsistenteController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BitacoraAccesoController;
+use App\Http\Controllers\Api\BodegaController;
 use App\Http\Controllers\Api\DispensacionController;
 use App\Http\Controllers\Api\KardexController;
 use App\Http\Controllers\Api\PacienteController;
@@ -18,6 +19,9 @@ Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttl
 Route::middleware(['auth:sanctum', 'activo'])->group(function () {
     Route::get('auth/me', [AuthController::class, 'me']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
+
+    Route::get('bodegas', [BodegaController::class, 'index']);
+    Route::get('bodegas/{bodega}/existencias', [BodegaController::class, 'existencias']);
 
     Route::get('pacientes', [PacienteController::class, 'buscar']);
     Route::get('pacientes/{paciente}', [PacienteController::class, 'show']);
