@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\DispensacionController;
+use App\Http\Controllers\Api\KardexController;
 use App\Http\Controllers\Api\TrasladoController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('dispensaciones/{dispensacion}', [DispensacionController::class, 'show']);
 
     Route::post('ajustes', [AjusteController::class, 'store']);
+    Route::get('kardex', [KardexController::class, 'index']);
 
     Route::get('traslados', [TrasladoController::class, 'index']);
     Route::post('traslados', [TrasladoController::class, 'store']);
