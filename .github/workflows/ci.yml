@@ -1,0 +1,179 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un solo run por rama: un push nuevo cancela el anterior.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Pint, Larastan, Pest contra SQL Server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      # Claves aleatorias en cada ejecución: no hay contraseñas en el repo ni en el workflow.
+      - name: Generar .env con claves aleatorias
+        run: |
+          scripts/generar-env.sh
+          # UID/GID del runner para que vendor/ y caches pertenezcan al usuario del checkout.
+          echo "UID_RUNNER=$(id -u)" >> "$GITHUB_ENV"
+          echo "GID_RUNNER=$(id -g)" >> "$GITHUB_ENV"
+
+      # Misma imagen de desarrollo que en local (PHP 8.4 + pdo_sqlsrv), con caché de capas.
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir imagen de desarrollo del backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          target: dev
+          load: true
+          tags: farmart-backend:dev
+          build-args: |
+            UID=${{ env.UID_RUNNER }}
+            GID=${{ env.GID_RUNNER }}
+          cache-from: type=gha,scope=backend-dev
+          cache-to: type=gha,mode=max,scope=backend-dev
+
+      # Mismos servicios y scripts que en local: SQL Server 2022, bases y usuario farmart_app.
+      - name: Levantar SQL Server y crear bases y usuario de la app
+        run: |
+          docker compose up -d sqlserver-init
+          docker compose wait sqlserver-init
+          docker compose logs sqlserver-init
+
+      # SQL Server ya está arriba: los pasos siguientes usan --no-deps para no repetir el init.
+      - name: Instalar dependencias de Composer
+        run: docker compose run --rm --no-deps backend composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Pint (estilo)
+        run: docker compose run --rm --no-deps backend composer lint
+
+      - name: Larastan (análisis estático)
+        run: docker compose run --rm --no-deps backend ./vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      # Corre como farmart_app (sin DDL) e incluye la suite de concurrencia con procesos paralelos.
+      - name: Pest (Unit, Feature y Concurrencia)
+        run: docker compose run --rm --no-deps backend ./vendor/bin/pest --colors=always
+
+      - name: Logs de SQL Server si algo falló
+        if: failure()
+        run: docker compose logs sqlserver | tail -100
+
+  frontend:
+    name: Frontend (ESLint, tipos, Vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  imagenes:
+    name: Imágenes Docker (build, prueba del stack y publicación)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Solo este job puede publicar paquetes.
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRO: ghcr.io/${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Generar .env con claves aleatorias y datos de demostración
+        run: SEED_DEMO=true scripts/generar-env.sh
+
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir imagen de producción del backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          target: prod
+          load: true
+          tags: farmart-backend:prod
+          cache-from: type=gha,scope=backend-prod
+          cache-to: type=gha,mode=max,scope=backend-prod
+      - name: Construir imagen del frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          load: true
+          tags: farmart-frontend:prod
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      # Prueba de humo del stack completo, igual que `docker compose up` en local.
+      - name: Levantar el stack completo
+        run: |
+          docker compose up -d
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost:8080/up >/dev/null && echo "Stack listo" && exit 0
+            sleep 3
+          done
+          docker compose ps -a
+          docker compose logs migrate app web
+          exit 1
+
+      - name: Prueba de humo (login, alertas, asistente)
+        run: |
+          set -euo pipefail
+          B=http://localhost:8080
+          curl -fsS $B/ | grep -q "<title>FARTMAR"
+          TOKEN=$(curl -fsS -X POST $B/api/auth/login -H 'Accept: application/json' -H 'Content-Type: application/json' \
+            -d '{"email":"regente1@farmart.test","password":"password"}' | jq -r .token)
+          AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Accept: application/json')
+          test "$(curl -fsS "${AUTH[@]}" $B/api/alertas/vencimientos | jq '.data | length')" -gt 0
+          curl -fsS "${AUTH[@]}" -H 'Content-Type: application/json' -X POST $B/api/asistente/preguntas \
+            -d '{"pregunta":"¿Qué productos están bajo el stock mínimo?"}' | jq -e '.data.intencion == "STOCK_BAJO_MINIMO"'
+          # Un token inválido se rechaza.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer x' -H 'Accept: application/json' $B/api/auth/me)" = 401
+
+      - name: Logs del stack si algo falló
+        if: failure()
+        run: docker compose logs
+
+      # CD: solo en main y solo si todo lo anterior pasó. Etiquetas: sha del commit y latest.
+      - name: Iniciar sesión en GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar imágenes
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          for imagen in farmart-backend farmart-frontend; do
+            for etiqueta in "${GITHUB_SHA::12}" latest; do
+              docker tag "$imagen:prod" "$REGISTRO/$imagen:$etiqueta"
+              docker push "$REGISTRO/$imagen:$etiqueta"
+            done
+          done
+
+      - name: Apagar el stack
+        if: always()
+        run: docker compose down -v
