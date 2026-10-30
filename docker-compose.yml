@@ -41,5 +41,20 @@ services:
         done
     restart: "no"
 
+  # Contenedor de desarrollo: composer, artisan y pest corren aquí (no en el host).
+  backend:
+    build:
+      context: ./backend
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    volumes:
+      - ./backend:/var/www/html
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      sqlserver-init:
+        condition: service_completed_successfully
+
 volumes:
   sqlserver-data:
