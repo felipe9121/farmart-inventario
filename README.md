@@ -5,12 +5,17 @@ Prueba técnica: API Laravel + SQL Server 2022 + frontend React.
 ## Levantar el entorno (desarrollo)
 
 ```bash
-cp .env.example .env                    # cambiar MSSQL_SA_PASSWORD
-cp backend/.env.example backend/.env    # DB_PASSWORD = MSSQL_SA_PASSWORD
+cp .env.example .env                    # cambiar MSSQL_SA_PASSWORD y MSSQL_APP_PASSWORD
+cp backend/.env.example backend/.env    # DB_PASSWORD = MSSQL_APP_PASSWORD, DB_ADMIN_PASSWORD = MSSQL_SA_PASSWORD
 docker compose run --rm backend php artisan key:generate
-docker compose run --rm backend php artisan migrate:fresh --seed
+docker compose run --rm backend php artisan migrate:fresh --seed --database=sqlsrv_admin
 docker compose run --rm backend ./vendor/bin/pest
 ```
+
+Las migraciones se ejecutan siempre con `--database=sqlsrv_admin`: el usuario de la app no tiene
+permisos de DDL, así que un `migrate` sin esa opción falla a propósito.
+
+Para obtener un token: `POST /api/auth/login` con `{"email": "...", "password": "..."}`.
 
 Calidad: `composer lint`, `composer format`, `composer analyse` (dentro del contenedor `backend`).
 
@@ -83,8 +88,6 @@ Usuarios de demostración (clave `password`, solo local): `admin@`, `regente1@`,
   timestamps se guarden en UTC. Se comparan fechas, no instantes.
 - **Tipos de `pdo_sqlsrv`:** con `SQLSRV_ATTR_FETCHES_NUMERIC_TYPE`, `int` y `bit` llegan como enteros.
   `bigint` (los IDs) sigue llegando como string, así que las FKs llevan cast `integer`.
-- **Pendiente para la etapa 4:** login para emitir tokens, bitácora de accesos al dispensar y límite
-  de intentos de la co-firma.
 
 ```http
 POST /api/dispensaciones
@@ -132,6 +135,44 @@ Idempotency-Key: 7f9c1a52-...
 | POST | `/api/ajustes` | regente |
 | GET | `/api/kardex` | auxiliar, regente, auditor, admin |
 
+### Seguridad y auditoría
+- **Autenticación:** tokens Bearer de Sanctum que expiran a las 8 h (`SANCTUM_EXPIRATION`).
+  - Para no dar pistas a un atacante, el login devuelve el mismo 401 si la clave es errónea, si el
+    usuario no existe o si está inactivo, y compara un hash incluso cuando el usuario no existe
+    (así el tiempo de respuesta tampoco revela nada).
+  - Hay un máximo de 5 intentos por minuto por correo + IP.
+  - Un usuario desactivado pierde el acceso de inmediato, aunque tenga tokens vigentes.
+- **Datos de pacientes (RN-10):**
+  - **Quién accede:** auxiliar, regente, médico y auditor. El **admin no accede**, por mínimo
+    privilegio: administra el sistema, no atiende pacientes.
+  - **Enmascarado:** el **auditor** ve los datos enmascarados (iniciales, los últimos 4 dígitos del
+    documento y solo el año de nacimiento).
+  - **Búsqueda:** solo por **documento exacto**, sin listados ni búsqueda por nombre, para que no se
+    puedan volcar datos.
+  - **Caché:** las respuestas van con `Cache-Control: no-store`.
+- **Bitácora de accesos:**
+  - Se registra cada búsqueda (también sin resultado), cada consulta y cada dispensación. La de la
+    dispensación va en la misma transacción.
+  - Se guardan el usuario, su rol en ese momento, el paciente, la acción y la IP. Nunca el término buscado.
+  - La consultan el auditor y el admin en `GET /api/bitacora-accesos`.
+- **Co-firma de control especial:** se bloquea tras 5 fallos cada 5 minutos (429). El límite es por
+  correo del regente + usuario que dispensa, para que nadie pueda bloquear a un regente a propósito.
+- **Ningún dato personal en logs:**
+  - **El problema:** el mensaje de un `QueryException` trae los valores de la consulta, y SQL Server
+    repite el dato en conflicto ("The duplicate key value is (CC, 9012345678)").
+  - **La solución:** estos errores se registran solo con el SQLSTATE, el código del driver, la
+    restricción violada y el SQL con `?`. Además, `zend.exception_ignore_args=On` quita de las trazas
+    los argumentos de las funciones.
+  - **Cómo se comprueba:** una prueba provoca el error con datos reales y revisa todo lo que se registró.
+- **Usuario de BD con mínimo privilegio:**
+  - **Permisos:** la app se conecta como `farmart_app`, que solo tiene `db_datareader` y
+    `db_datawriter`. Sin DDL, no puede crear ni borrar tablas, ni desactivar triggers.
+  - **Restricciones extra:** una migración le aplica `DENY UPDATE/DELETE` sobre el kardex y la
+    bitácora, y `DENY DELETE` sobre los documentos y catálogos con historia.
+  - **Dos barreras:** aun con permisos de administrador, los triggers siguen impidiendo editar el kardex.
+  - **Migraciones:** usan la conexión `sqlsrv_admin`.
+  - **Pruebas:** **corren como `farmart_app`**; si pasan, la app funciona con esos permisos.
+
 ### Pruebas
 - `./vendor/bin/pest` corre todo. `--testsuite=Concurrencia` corre solo las pruebas con procesos PHP
   paralelos (`Concurrency::run`). Esa suite no usa `RefreshDatabase`, porque los otros procesos deben
@@ -139,8 +180,6 @@ Idempotency-Key: 7f9c1a52-...
 
 ### Entorno
 - **Laravel 13 / PHP 8.4** (Laravel 13 exige PHP ≥ 8.3).
-- La app se conecta como `sa` en desarrollo; en la etapa de seguridad se creará un usuario con
-  permisos mínimos.
 - Conexión cifrada (ODBC Driver 18); `DB_TRUST_SERVER_CERTIFICATE=true` solo en local por el
   certificado autofirmado.
 - Las pruebas usan la base `farmart_test` en SQL Server (nunca SQLite), con `RefreshDatabase`.
