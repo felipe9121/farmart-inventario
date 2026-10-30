@@ -1,5 +1,28 @@
 name: farmart
 
+# Variables comunes de la app (contenedores app y migrate). APP_DEBUG siempre false: el
+# modo debug expone mensajes de error con datos (RN-10).
+x-app-env: &app-env
+  APP_NAME: Farmart
+  APP_ENV: ${APP_ENV:-demo}
+  APP_KEY: ${APP_KEY:?Define APP_KEY en .env (ver .env.example)}
+  APP_DEBUG: "false"
+  APP_URL: http://localhost:${WEB_PORT:-8080}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: info
+  DB_CONNECTION: sqlsrv
+  DB_HOST: sqlserver
+  DB_PORT: "1433"
+  DB_DATABASE: ${DB_DATABASE:-farmart}
+  DB_USERNAME: ${MSSQL_APP_USER:-farmart_app}
+  DB_PASSWORD: ${MSSQL_APP_PASSWORD:?Define MSSQL_APP_PASSWORD en .env (ver .env.example)}
+  DB_ENCRYPT: "yes"
+  # Certificado autofirmado del contenedor de SQL Server; con un certificado real, false.
+  DB_TRUST_SERVER_CERTIFICATE: "true"
+  SESSION_DRIVER: array
+  CACHE_STORE: database
+  QUEUE_CONNECTION: sync
+
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -47,13 +70,61 @@ services:
         done
     restart: "no"
 
-  # Contenedor de desarrollo: composer, artisan y pest corren aquí (no en el host).
-  backend:
+  # Migraciones (y datos de demostración si SEED_DEMO=true) con la conexión de
+  # administración; termina. Es el único contenedor de la app con la clave de sa.
+  migrate:
     build:
       context: ./backend
+      target: prod
+    image: farmart-backend:prod
+    environment:
+      <<: *app-env
+      DB_ADMIN_USERNAME: sa
+      DB_ADMIN_PASSWORD: ${MSSQL_SA_PASSWORD:?Define MSSQL_SA_PASSWORD en .env (ver .env.example)}
+      SEED_DEMO: ${SEED_DEMO:-false}
+    command:
+      - sh
+      - -c
+      - |
+        php artisan migrate --force --database=sqlsrv_admin
+        if [ "$$SEED_DEMO" = "true" ]; then php artisan db:seed --force --database=sqlsrv_admin; fi
+    depends_on:
+      sqlserver-init:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # API: PHP-FPM con el usuario de BD sin DDL. Sin puertos publicados: solo la ve web.
+  app:
+    image: farmart-backend:prod
+    environment:
+      <<: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Única puerta de entrada: SPA + /api por FastCGI hacia app.
+  web:
+    build:
+      context: ./frontend
+    image: farmart-frontend:prod
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # Desarrollo (perfil dev): composer, artisan y pest corren aquí con el código montado.
+  # `docker compose run --rm backend ...` lo usa sin necesidad de activar el perfil.
+  backend:
+    profiles: [dev]
+    build:
+      context: ./backend
+      target: dev
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
+    image: farmart-backend:dev
     volumes:
       - ./backend:/var/www/html
     ports:
