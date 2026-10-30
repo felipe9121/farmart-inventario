@@ -194,6 +194,31 @@ Idempotency-Key: 7f9c1a52-...
   - **Privacidad:** la pregunta no se guarda ni se registra en logs, por si el usuario escribe datos
     personales.
 
+### Frontend
+- **Alcance:** cuatro pantallas **sencillas** (login, dispensación, traslados, y alertas con kardex), porque
+  en esta prueba el peso está en el backend. React + TypeScript + Vite, **sin router ni librerías de UI**.
+- **Las reglas que la UI debe respetar** están en funciones puras con pruebas Vitest:
+  - acciones de un traslado según estado y rol (quien solicitó no ve "aprobar");
+  - co-firma solo cuando hay productos de control especial;
+  - **reutilizar la llave de idempotencia** si se reintenta el mismo contenido (doble clic o red caída),
+    para no duplicar la dispensación.
+- **La UI solo oculta**, no autoriza: cada petición la vuelve a autorizar el backend.
+- **API sin CORS:** el proxy de Vite reenvía `/api` al backend, así que el navegador trabaja con un solo origen.
+- **Token en `sessionStorage`:** es simple y se borra al cerrar la pestaña. El trade-off es que queda
+  expuesto si hubiera XSS. La alternativa más robusta sería la autenticación de SPA de Sanctum con cookies
+  `httpOnly`, que exige CSRF y el mismo dominio.
+- **TypeScript 6.0** en lugar del 7 de la plantilla, porque `typescript-eslint` (el CLAUDE.md exige ESLint)
+  aún no soporta la 7.
+
+```bash
+cd frontend
+docker run --rm -it -u 1000:1000 -v "$PWD":/app -w /app --network farmart_default \
+  -e VITE_API_URL=http://backend:8000 -p 5173:5173 node:24-alpine npx vite --host 0.0.0.0
+# requiere el backend arriba: docker compose up -d backend  → http://localhost:5173
+```
+
+Calidad del frontend: `npm run lint`, `npm run typecheck`, `npm test`.
+
 ### Pruebas
 - `./vendor/bin/pest` corre todo. `--testsuite=Concurrencia` corre solo las pruebas con procesos PHP
   paralelos (`Concurrency::run`). Esa suite no usa `RefreshDatabase`, porque los otros procesos deben
