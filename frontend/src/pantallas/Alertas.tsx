@@ -94,9 +94,9 @@ function Asistente() {
 
   return (
     <form className="tarjeta" onSubmit={enviar}>
-      <strong>Asistente de inventario</strong>
+      <strong>Asistente de inventario - IA</strong>
       <div className="fila">
-        <input aria-label="Pregunta" placeholder="¿Qué lotes vencen en los próximos 30 días en la Bodega Central?" value={pregunta} onChange={(e) => setPregunta(e.target.value)} required minLength={3} />
+        <input aria-label="Pregunta" style={{ flex: 1 }} placeholder="¿Qué lotes vencen en los próximos 30 días en la Bodega Central?" value={pregunta} onChange={(e) => setPregunta(e.target.value)} required minLength={3} />
         <button type="submit">Preguntar</button>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
