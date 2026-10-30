@@ -11,6 +11,10 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <!-- Procesos paralelos contra SQL Server con datos confirmados (más lenta). -->
+        <testsuite name="Concurrencia">
+            <directory>tests/Concurrencia</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

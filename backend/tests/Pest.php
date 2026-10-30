@@ -15,6 +15,10 @@ pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
 
+// Sin RefreshDatabase: los procesos paralelos deben ver datos confirmados.
+pest()->extend(TestCase::class)
+    ->in('Concurrencia');
+
 /**
  * Ejecuta el callback y devuelve la ReglaNegocioException que lanza, para inspeccionar código y detalle.
  */
