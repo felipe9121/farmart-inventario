@@ -2,10 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Actions\Dispensaciones\DatosDispensacion;
-use App\Actions\Dispensaciones\RegistrarDispensacion;
 use App\Enums\Rol;
-use App\Exceptions\ReglaNegocioException;
 use App\Models\Bodega;
 use App\Models\Dispensacion;
 use App\Models\Existencia;
@@ -17,7 +14,7 @@ use App\Models\Producto;
 use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Concurrency;
-use Illuminate\Support\Facades\DB;
+use Tests\Support\Concurrente;
 
 /*
 | Concurrencia real: cada tarea corre en un proceso PHP distinto con su propia conexión
@@ -28,44 +25,6 @@ use Illuminate\Support\Facades\DB;
 beforeEach(function () {
     Artisan::call('migrate:fresh');
 });
-
-/*
-| Las tareas se crean en funciones globales: un closure definido dentro de la prueba
-| queda ligado a la clase de prueba de Pest, que no existe en el proceso hijo.
-*/
-
-function baseDeDatosDelHijo(): Closure
-{
-    return fn () => DB::connection()->getDatabaseName();
-}
-
-/**
- * Tarea para un proceso hijo: espera la barrera de tiempo y dispensa.
- *
- * @param  list<array{int, int}>  $items  pares [prescripcion_item_id, cantidad]
- * @return Closure(): array{ok: bool, id?: int, repetida?: bool, codigo?: string}
- */
-function tareaDispensar(float $barrera, int $usuarioId, int $pacienteId, int $prescripcionId, int $bodegaId, array $items, string $llave): Closure
-{
-    return function () use ($barrera, $usuarioId, $pacienteId, $prescripcionId, $bodegaId, $items, $llave) {
-        // Todos los procesos arrancan a la vez para maximizar la contención.
-        usleep(max(0, (int) (($barrera - microtime(true)) * 1_000_000)));
-
-        try {
-            $resultado = app(RegistrarDispensacion::class)->ejecutar(
-                User::query()->findOrFail($usuarioId),
-                new DatosDispensacion($pacienteId, $prescripcionId, $bodegaId, array_map(
-                    fn (array $par) => ['prescripcion_item_id' => $par[0], 'cantidad' => $par[1]], $items,
-                )),
-                $llave,
-            );
-
-            return ['ok' => true, 'id' => $resultado->dispensacion->id, 'repetida' => $resultado->repetida];
-        } catch (ReglaNegocioException $e) {
-            return ['ok' => false, 'codigo' => $e->codigo];
-        }
-    };
-}
 
 function prescripcionCon(Producto ...$productos): Prescripcion
 {
@@ -89,7 +48,7 @@ function stockDe(Producto $producto, Bodega $bodega, int $cantidad): Existencia
 }
 
 it('los procesos hijos usan la base de pruebas', function () {
-    expect(Concurrency::run([baseDeDatosDelHijo()]))->toBe(['farmart_test']);
+    expect(Concurrency::run([Concurrente::baseDeDatos()]))->toBe(['farmart_test']);
 });
 
 it('nunca deja stock negativo con dispensaciones simultáneas (RN-03)', function () {
@@ -102,7 +61,7 @@ it('nunca deja stock negativo con dispensaciones simultáneas (RN-03)', function
     $tareas = [];
     foreach (range(1, 6) as $i) {
         $prescripcion = prescripcionCon($producto);
-        $tareas[] = tareaDispensar(
+        $tareas[] = Concurrente::dispensar(
             $barrera, User::factory()->rol(Rol::AuxiliarFarmacia)->create()->id, $prescripcion->paciente_id,
             $prescripcion->id, $bodega->id, [[$prescripcion->items()->sole()->id, 3]], "llave-{$i}",
         );
@@ -125,7 +84,7 @@ it('crea una sola dispensación ante reintentos simultáneos con la misma llave 
     $usuario = User::factory()->rol(Rol::AuxiliarFarmacia)->create();
     $barrera = microtime(true) + 3;
 
-    $tareas = array_map(fn () => tareaDispensar(
+    $tareas = array_map(fn () => Concurrente::dispensar(
         $barrera, $usuario->id, $prescripcion->paciente_id, $prescripcion->id, $bodega->id,
         [[$prescripcion->items()->sole()->id, 5]], 'misma-llave',
     ), range(1, 5));
@@ -151,7 +110,7 @@ it('no se bloquea con pedidos de varios productos en orden cruzado', function ()
     foreach (range(1, 6) as $i) {
         $prescripcion = prescripcionCon($a, $b);
         $items = $prescripcion->items()->orderBy('producto_id')->pluck('id')->map(fn (int $id) => [$id, 2])->all();
-        $tareas[] = tareaDispensar(
+        $tareas[] = Concurrente::dispensar(
             $barrera, User::factory()->rol(Rol::AuxiliarFarmacia)->create()->id, $prescripcion->paciente_id,
             $prescripcion->id, $bodega->id, $i % 2 === 0 ? $items : array_reverse($items), "llave-{$i}",
         );
