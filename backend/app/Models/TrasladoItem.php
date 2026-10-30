@@ -30,6 +30,9 @@ class TrasladoItem extends Model
     protected function casts(): array
     {
         return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'traslado_id' => 'integer',
+            'lote_id' => 'integer',
             'cantidad_solicitada' => 'integer',
             'cantidad_despachada' => 'integer',
             'cantidad_recibida' => 'integer',

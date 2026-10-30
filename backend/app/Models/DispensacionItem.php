@@ -27,7 +27,13 @@ class DispensacionItem extends Model
 
     protected function casts(): array
     {
-        return ['cantidad' => 'integer'];
+        return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'dispensacion_id' => 'integer',
+            'prescripcion_item_id' => 'integer',
+            'lote_id' => 'integer',
+            'cantidad' => 'integer',
+        ];
     }
 
     /** @return BelongsTo<Dispensacion, $this> */

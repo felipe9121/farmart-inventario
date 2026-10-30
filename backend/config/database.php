@@ -115,6 +115,11 @@ return [
             // ODBC Driver 18 cifra por defecto; en local el certificado es autofirmado.
             'encrypt' => env('DB_ENCRYPT', 'yes'),
             'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
+            // pdo_sqlsrv devuelve los enteros como string; así llegan como int y las
+            // comparaciones estrictas (===) entre IDs y cantidades funcionan.
+            'options' => extension_loaded('pdo_sqlsrv') ? [
+                PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE => true,
+            ] : [],
         ],
 
     ],

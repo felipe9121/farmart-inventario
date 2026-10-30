@@ -26,7 +26,12 @@ class StockMinimo extends Model
 
     protected function casts(): array
     {
-        return ['cantidad_minima' => 'integer'];
+        return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'bodega_id' => 'integer',
+            'producto_id' => 'integer',
+            'cantidad_minima' => 'integer',
+        ];
     }
 
     /** @return BelongsTo<Bodega, $this> */

@@ -31,7 +31,11 @@ class Lote extends Model
 
     protected function casts(): array
     {
-        return ['fecha_vencimiento' => 'date'];
+        return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'producto_id' => 'integer',
+            'fecha_vencimiento' => 'date',
+        ];
     }
 
     /** @return BelongsTo<Producto, $this> */

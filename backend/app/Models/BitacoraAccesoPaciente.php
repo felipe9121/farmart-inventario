@@ -40,6 +40,9 @@ class BitacoraAccesoPaciente extends Model
     protected function casts(): array
     {
         return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'usuario_id' => 'integer',
+            'paciente_id' => 'integer',
             'rol' => Rol::class,
             'accion' => AccionBitacora::class,
             'created_at' => 'datetime',

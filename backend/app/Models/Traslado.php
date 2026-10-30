@@ -47,6 +47,15 @@ class Traslado extends Model
     protected function casts(): array
     {
         return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'bodega_origen_id' => 'integer',
+            'bodega_destino_id' => 'integer',
+            'creado_por' => 'integer',
+            'solicitado_por' => 'integer',
+            'aprobado_por' => 'integer',
+            'despachado_por' => 'integer',
+            'recibido_por' => 'integer',
+            'anulado_por' => 'integer',
             'estado' => EstadoTraslado::class,
             'solicitado_at' => 'datetime',
             'aprobado_at' => 'datetime',

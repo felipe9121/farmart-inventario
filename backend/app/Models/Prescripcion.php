@@ -34,6 +34,9 @@ class Prescripcion extends Model
     protected function casts(): array
     {
         return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'paciente_id' => 'integer',
+            'medico_id' => 'integer',
             'fecha_emision' => 'date',
             'vigente_hasta' => 'date',
         ];

@@ -51,6 +51,13 @@ class MovimientoKardex extends Model
     protected function casts(): array
     {
         return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'bodega_id' => 'integer',
+            'producto_id' => 'integer',
+            'lote_id' => 'integer',
+            'dispensacion_item_id' => 'integer',
+            'traslado_item_id' => 'integer',
+            'usuario_id' => 'integer',
             'tipo' => TipoMovimiento::class,
             'cantidad' => 'integer',
             'saldo_resultante' => 'integer',

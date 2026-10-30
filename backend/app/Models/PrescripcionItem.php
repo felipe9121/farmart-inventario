@@ -29,6 +29,9 @@ class PrescripcionItem extends Model
     protected function casts(): array
     {
         return [
+            // pdo_sqlsrv devuelve bigint como string.
+            'prescripcion_id' => 'integer',
+            'producto_id' => 'integer',
             'cantidad_prescrita' => 'integer',
             'cantidad_dispensada' => 'integer',
         ];
