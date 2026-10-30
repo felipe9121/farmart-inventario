@@ -1,0 +1,26 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Database\Factories;
+
+use App\Models\Prescripcion;
+use App\Models\PrescripcionItem;
+use App\Models\Producto;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<PrescripcionItem>
+ */
+class PrescripcionItemFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'prescripcion_id' => Prescripcion::factory(),
+            'producto_id' => Producto::factory(),
+            'cantidad_prescrita' => fake()->numberBetween(10, 60),
+            'posologia' => '1 cada 8 horas',
+        ];
+    }
+}
