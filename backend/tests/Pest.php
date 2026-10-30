@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Exceptions\ReglaNegocioException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\AssertionFailedError;
 use Tests\TestCase;
 
 /*
@@ -12,3 +14,17 @@ use Tests\TestCase;
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
+
+/**
+ * Ejecuta el callback y devuelve la ReglaNegocioException que lanza, para inspeccionar código y detalle.
+ */
+function capturarError(Closure $callback): ReglaNegocioException
+{
+    try {
+        $callback();
+    } catch (ReglaNegocioException $e) {
+        return $e;
+    }
+
+    throw new AssertionFailedError('Se esperaba una ReglaNegocioException.');
+}
