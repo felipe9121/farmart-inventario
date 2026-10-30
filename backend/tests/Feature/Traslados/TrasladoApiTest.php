@@ -107,6 +107,19 @@ it('filtra el listado por estado', function () {
     getJson('/api/traslados?estado=PERDIDO')->assertUnprocessable();
 });
 
+it('el listado incluye los ítems con su lote, como el detalle', function () {
+    $e = EscenarioTraslado::crear();
+    $existencia = $e->stockEnOrigen(20);
+    $e->borrador([[$existencia, 3]]);
+    Sanctum::actingAs($e->auxiliar);
+
+    // El frontend dibuja los lotes de cada traslado del listado: sin items la pantalla fallaba.
+    getJson('/api/traslados')
+        ->assertOk()
+        ->assertJsonPath('data.0.items.0.cantidad_solicitada', 3)
+        ->assertJsonPath('data.0.items.0.lote.id', $existencia->lote_id);
+});
+
 it('valida la forma de la petición', function () {
     $e = EscenarioTraslado::crear();
     Sanctum::actingAs($e->auxiliar);

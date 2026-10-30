@@ -36,7 +36,9 @@ class TrasladoController extends Controller
             'bodega_id' => ['sometimes', 'integer', 'min:1'],
         ]);
 
+        // Con sus ítems y lotes, igual que el detalle: la pantalla de traslados los muestra.
         $traslados = Traslado::query()
+            ->with('items.lote')
             ->when($filtros['estado'] ?? null, fn ($q, $estado) => $q->where('estado', $estado))
             ->when($filtros['bodega_id'] ?? null, fn ($q, $bodega) => $q->where(
                 fn ($q) => $q->where('bodega_origen_id', $bodega)->orWhere('bodega_destino_id', $bodega),
