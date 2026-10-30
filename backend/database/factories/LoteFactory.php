@@ -6,6 +6,7 @@ namespace Database\Factories;
 
 use App\Models\Lote;
 use App\Models\Producto;
+use App\Support\FechaNegocio;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,14 +19,14 @@ class LoteFactory extends Factory
         return [
             'producto_id' => Producto::factory(),
             'numero_lote' => fake()->unique()->bothify('L-####??'),
-            'fecha_vencimiento' => now()->addMonths(fake()->numberBetween(6, 36))->toDateString(),
+            'fecha_vencimiento' => FechaNegocio::hoy()->addMonths(fake()->numberBetween(6, 36))->toDateString(),
         ];
     }
 
     public function venceEnDias(int $dias): static
     {
         return $this->state(fn (array $attributes) => [
-            'fecha_vencimiento' => now()->addDays($dias)->toDateString(),
+            'fecha_vencimiento' => FechaNegocio::hoy()->addDays($dias)->toDateString(),
         ]);
     }
 

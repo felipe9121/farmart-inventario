@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\FechaNegocio;
 use Carbon\CarbonImmutable;
 use Database\Factories\PrescripcionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -61,9 +62,9 @@ class Prescripcion extends Model
      */
     public function estaVigente(?CarbonImmutable $hoy = null): bool
     {
-        $hoy = ($hoy ?? CarbonImmutable::today())->startOfDay();
+        $hoy = ($hoy ?? FechaNegocio::hoy())->toDateString();
 
-        return $this->fecha_emision->lte($hoy) && $this->vigente_hasta->gte($hoy);
+        return $this->fecha_emision->toDateString() <= $hoy && $this->vigente_hasta->toDateString() >= $hoy;
     }
 
     /** @return HasMany<Dispensacion, $this> */

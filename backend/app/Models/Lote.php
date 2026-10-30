@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\FechaNegocio;
 use Carbon\CarbonImmutable;
 use Database\Factories\LoteFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -50,7 +51,7 @@ class Lote extends Model
      */
     public function estaVencido(?CarbonImmutable $hoy = null): bool
     {
-        return $this->fecha_vencimiento->lt(($hoy ?? CarbonImmutable::today())->startOfDay());
+        return $this->fecha_vencimiento->toDateString() < ($hoy ?? FechaNegocio::hoy())->toDateString();
     }
 
     /**
@@ -59,6 +60,6 @@ class Lote extends Model
      */
     public function scopeVigentes(Builder $query): Builder
     {
-        return $query->whereDate('fecha_vencimiento', '>=', CarbonImmutable::today());
+        return $query->whereDate('fecha_vencimiento', '>=', FechaNegocio::hoy()->toDateString());
     }
 }
