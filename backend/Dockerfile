@@ -19,6 +19,9 @@ RUN apt-get update \
     && apt-get purge -y gnupg2 && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /tmp/pear
 
+# RN-10: las trazas de excepciones no incluyen argumentos (podrían ser datos de pacientes).
+RUN echo 'zend.exception_ignore_args = On' > /usr/local/etc/php/conf.d/zz-seguridad.ini
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 RUN groupadd -g ${GID} app && useradd -m -u ${UID} -g ${GID} app
