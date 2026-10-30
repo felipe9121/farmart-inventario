@@ -37,8 +37,10 @@ return new class extends Migration
             CHECK (autorizado_por IS NULL OR autorizado_por <> dispensado_por)');
         DB::statement('ALTER TABLE dispensaciones ADD CONSTRAINT ck_dispensaciones_autorizacion_completa
             CHECK ((autorizado_por IS NULL AND autorizado_at IS NULL) OR (autorizado_por IS NOT NULL AND autorizado_at IS NOT NULL))');
+        // IS NOT NULL explícito: LEN(NULL) > 0 es UNKNOWN y un CHECK solo rechaza FALSE.
         DB::statement('ALTER TABLE dispensaciones ADD CONSTRAINT ck_dispensaciones_idempotencia
-            CHECK ((idempotency_key IS NULL AND idempotency_hash IS NULL) OR (LEN(idempotency_key) > 0 AND idempotency_hash IS NOT NULL))');
+            CHECK ((idempotency_key IS NULL AND idempotency_hash IS NULL)
+                OR (idempotency_key IS NOT NULL AND LEN(idempotency_key) > 0 AND idempotency_hash IS NOT NULL))');
 
         // RN-02: un ítem prescrito puede salir de varios lotes (FEFO): una fila por lote.
         Schema::create('dispensacion_items', function (Blueprint $table) {

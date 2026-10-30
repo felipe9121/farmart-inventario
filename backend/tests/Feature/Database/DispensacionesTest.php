@@ -35,6 +35,10 @@ it('exige el hash del payload cuando hay llave de idempotencia', function () {
     Dispensacion::factory()->create(['idempotency_hash' => null]);
 })->throws(QueryException::class, 'ck_dispensaciones_idempotencia');
 
+it('rechaza un hash de payload sin llave de idempotencia', function () {
+    Dispensacion::factory()->create(['idempotency_key' => null]);
+})->throws(QueryException::class, 'ck_dispensaciones_idempotencia');
+
 it('impide que quien dispensa se autorice a sí mismo (RN-05)', function () {
     $regente = User::factory()->rol(Rol::RegenteFarmacia)->create();
 
