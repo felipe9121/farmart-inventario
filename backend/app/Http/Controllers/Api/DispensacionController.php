@@ -17,7 +17,7 @@ class DispensacionController extends Controller
 {
     public function store(StoreDispensacionRequest $request, RegistrarDispensacion $registrar): JsonResponse
     {
-        $resultado = $registrar->ejecutar($request->usuario(), $request->datos(), $request->llaveIdempotencia());
+        $resultado = $registrar->ejecutar($request->usuario(), $request->datos(), $request->llaveIdempotencia(), $request->ip());
 
         return DispensacionResource::make($resultado->dispensacion->load('items.lote'))
             ->response()

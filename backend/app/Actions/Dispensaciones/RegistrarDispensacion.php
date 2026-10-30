@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Dispensaciones;
 
+use App\Enums\AccionBitacora;
 use App\Enums\Rol;
 use App\Enums\TipoMovimiento;
 use App\Exceptions\ReglaNegocioException;
@@ -13,6 +14,7 @@ use App\Models\DispensacionItem;
 use App\Models\Prescripcion;
 use App\Models\PrescripcionItem;
 use App\Models\User;
+use App\Services\Auditoria\BitacoraAccesos;
 use App\Services\Inventario\InventarioService;
 use App\Support\Transaccion;
 use Illuminate\Database\Eloquent\Collection;
@@ -29,9 +31,15 @@ use Illuminate\Support\Facades\Hash;
  */
 final class RegistrarDispensacion
 {
-    public function __construct(private readonly InventarioService $inventario) {}
+    public function __construct(
+        private readonly InventarioService $inventario,
+        private readonly BitacoraAccesos $bitacora,
+    ) {}
 
-    public function ejecutar(User $dispensador, DatosDispensacion $datos, string $llave): ResultadoDispensacion
+    /**
+     * @param  string|null  $ip  origen de la petición, para la bitácora de accesos (RN-10).
+     */
+    public function ejecutar(User $dispensador, DatosDispensacion $datos, string $llave, ?string $ip = null): ResultadoDispensacion
     {
         $huella = $datos->huella();
 
@@ -48,7 +56,7 @@ final class RegistrarDispensacion
 
         try {
             $dispensacion = Transaccion::conReintento(
-                fn () => $this->registrar($dispensador, $autorizador, $datos, $llave, $huella),
+                fn () => $this->registrar($dispensador, $autorizador, $datos, $llave, $huella, $ip),
             );
         } catch (UniqueConstraintViolationException $e) {
             // Una petición concurrente con la misma llave se confirmó primero: se devuelve la suya.
@@ -66,7 +74,7 @@ final class RegistrarDispensacion
         return new ResultadoDispensacion($dispensacion, repetida: false);
     }
 
-    private function registrar(User $dispensador, ?User $autorizador, DatosDispensacion $datos, string $llave, string $huella): Dispensacion
+    private function registrar(User $dispensador, ?User $autorizador, DatosDispensacion $datos, string $llave, string $huella, ?string $ip): Dispensacion
     {
         $prescripcion = Prescripcion::query()->lockForUpdate()->find($datos->prescripcionId)
             ?? throw new ReglaNegocioException('PRESCRIPCION_NO_ENCONTRADA', 'La prescripción no existe.');
@@ -127,6 +135,9 @@ final class RegistrarDispensacion
             $item->cantidad_dispensada += $solicitud['cantidad'];
             $item->save();
         }
+
+        // RN-10: en la misma transacción, así no hay dispensación sin su registro de acceso.
+        $this->bitacora->registrar($dispensador, AccionBitacora::Dispensacion, $prescripcion->paciente_id, $ip);
 
         return $dispensacion;
     }

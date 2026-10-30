@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BitacoraAccesoController;
 use App\Http\Controllers\Api\DispensacionController;
 use App\Http\Controllers\Api\KardexController;
 use App\Http\Controllers\Api\PacienteController;
@@ -25,6 +26,7 @@ Route::middleware(['auth:sanctum', 'activo'])->group(function () {
 
     Route::post('ajustes', [AjusteController::class, 'store']);
     Route::get('kardex', [KardexController::class, 'index']);
+    Route::get('bitacora-accesos', [BitacoraAccesoController::class, 'index']);
 
     Route::get('traslados', [TrasladoController::class, 'index']);
     Route::post('traslados', [TrasladoController::class, 'store']);
