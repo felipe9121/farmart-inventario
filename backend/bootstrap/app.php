@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\RequiereIdempotencyKey;
+use App\Http\Middleware\SinCache;
 use App\Http\Middleware\UsuarioActivo;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->api(append: [SinCache::class]);
+
         $middleware->alias([
             'idempotencia' => RequiereIdempotencyKey::class,
             'activo' => UsuarioActivo::class,

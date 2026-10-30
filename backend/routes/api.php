@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DispensacionController;
 use App\Http\Controllers\Api\KardexController;
+use App\Http\Controllers\Api\PacienteController;
 use App\Http\Controllers\Api\TrasladoController;
 use Illuminate\Support\Facades\Route;
 
@@ -14,6 +15,10 @@ Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttl
 Route::middleware(['auth:sanctum', 'activo'])->group(function () {
     Route::get('auth/me', [AuthController::class, 'me']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
+
+    Route::get('pacientes', [PacienteController::class, 'buscar']);
+    Route::get('pacientes/{paciente}', [PacienteController::class, 'show']);
+    Route::get('pacientes/{paciente}/prescripciones', [PacienteController::class, 'prescripciones']);
 
     Route::post('dispensaciones', [DispensacionController::class, 'store'])->middleware('idempotencia');
     Route::get('dispensaciones/{dispensacion}', [DispensacionController::class, 'show']);
