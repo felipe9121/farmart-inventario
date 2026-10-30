@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, describirError } from '../api/cliente'
 import type { Bodega, Coleccion, LotePorVencer, Movimiento, RespuestaAsistente, StockBajo } from '../api/tipos'
 
+// Asistente de IA oculto por ahora: cambiar a true para mostrarlo.
+const MOSTRAR_ASISTENTE = false
+
 export function Alertas({ bodegas }: { bodegas: Bodega[] }) {
   const [bodegaId, setBodegaId] = useState<number | ''>('')
   const [vencimientos, setVencimientos] = useState<LotePorVencer[]>([])
@@ -32,7 +35,7 @@ export function Alertas({ bodegas }: { bodegas: Bodega[] }) {
       </label>
       {error && <p className="error" role="alert">{error}</p>}
 
-      <Asistente />
+      {MOSTRAR_ASISTENTE && <Asistente />}
 
       <h3>Lotes que vencen en 90 días o menos ({vencimientos.length})</h3>
       <table>
