@@ -20,6 +20,7 @@ use App\Support\Transaccion;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Registra una dispensación (RN-02, RN-04, RN-05, RN-09).
@@ -31,6 +32,8 @@ use Illuminate\Support\Facades\Hash;
  */
 final class RegistrarDispensacion
 {
+    private const INTENTOS_COFIRMA = 5;
+
     public function __construct(
         private readonly InventarioService $inventario,
         private readonly BitacoraAccesos $bitacora,
@@ -196,12 +199,25 @@ final class RegistrarDispensacion
             throw new ReglaNegocioException('AUTORIZACION_REQUERIDA', 'Hay productos de control especial: se requiere la autorización de un regente.');
         }
 
+        // Fuerza bruta sobre la clave del regente: 5 fallos cada 5 minutos. La llave incluye a
+        // quien dispensa para que nadie pueda bloquear a un regente a propósito.
+        $llaveIntentos = 'cofirma:'.mb_strtolower($credenciales->email).'|'.$dispensador->id;
+        if (RateLimiter::tooManyAttempts($llaveIntentos, self::INTENTOS_COFIRMA)) {
+            throw new ReglaNegocioException('AUTORIZACION_BLOQUEADA', 'Demasiados intentos de autorización fallidos. Intente más tarde.', [
+                'reintentar_en_segundos' => RateLimiter::availableIn($llaveIntentos),
+            ], status: 429);
+        }
+
         $autorizador = User::query()->where('email', $credenciales->email)->first();
 
         // Mismo mensaje para usuario inexistente o clave errónea: no revela qué cuentas existen.
         if ($autorizador === null || ! $autorizador->activo || ! Hash::check($credenciales->password, $autorizador->password)) {
+            RateLimiter::hit($llaveIntentos, 300);
+
             throw new ReglaNegocioException('AUTORIZACION_INVALIDA', 'Las credenciales de autorización no son válidas.');
         }
+
+        RateLimiter::clear($llaveIntentos);
 
         if ($autorizador->id === $dispensador->id) {
             throw new ReglaNegocioException('AUTORIZADOR_ES_DISPENSADOR', 'Quien dispensa no puede autorizar su propia dispensación.');

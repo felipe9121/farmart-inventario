@@ -174,6 +174,35 @@ describe('control especial (RN-05)', function () {
         expect(capturarError(fn () => dispensar($e, [[$item, 1]], $e->firmaRegente()))->codigo)->toBe('AUTORIZACION_INVALIDA');
     });
 
+    it('bloquea la co-firma tras 5 intentos fallidos, aun con la clave correcta', function () {
+        $e = EscenarioDispensacion::crear();
+        $item = $e->item(controlEspecial: true);
+        $e->stock($item, 50);
+        $erronea = new CredencialesAutorizacion($e->regente->email, 'otra');
+
+        foreach (range(1, 5) as $intento) {
+            expect(capturarError(fn () => dispensar($e, [[$item, 1]], $erronea, llave: "k-{$intento}"))->codigo)->toBe('AUTORIZACION_INVALIDA');
+        }
+        $bloqueo = capturarError(fn () => dispensar($e, [[$item, 1]], $e->firmaRegente(), llave: 'k-6'));
+
+        expect($bloqueo->codigo)->toBe('AUTORIZACION_BLOQUEADA')
+            ->and($bloqueo->status)->toBe(429);
+    });
+
+    it('el bloqueo de un auxiliar no afecta a otro', function () {
+        $e = EscenarioDispensacion::crear();
+        $item = $e->item(controlEspecial: true);
+        $e->stock($item, 50);
+        $erronea = new CredencialesAutorizacion($e->regente->email, 'otra');
+        foreach (range(1, 5) as $intento) {
+            capturarError(fn () => dispensar($e, [[$item, 1]], $erronea, llave: "k-{$intento}"));
+        }
+
+        $otro = User::factory()->rol(Rol::AuxiliarFarmacia)->create();
+
+        expect(dispensar($e, [[$item, 1]], $e->firmaRegente(), usuario: $otro)->dispensacion->autorizado_por)->toBe($e->regente->id);
+    });
+
     it('no pide autorización si no hay productos de control especial', function () {
         $e = EscenarioDispensacion::crear();
         $item = $e->item();
