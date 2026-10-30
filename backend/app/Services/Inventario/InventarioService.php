@@ -108,6 +108,30 @@ class InventarioService
     }
 
     /**
+     * Rango de bloqueo de cada lote en la bodega: el id de su existencia (o PHP_INT_MAX si aún
+     * no existe). Los llamadores ordenan por [producto_id, rango] antes de bloquear, para
+     * respetar el mismo orden que asignarFefo() (existencias por id dentro de cada producto).
+     *
+     * @param  list<int>  $loteIds
+     * @return array<int, int> lote_id => rango
+     */
+    public function rangoDeBloqueo(int $bodegaId, array $loteIds): array
+    {
+        $ids = Existencia::query()
+            ->where('bodega_id', $bodegaId)
+            ->whereIn('lote_id', $loteIds)
+            ->pluck('id', 'lote_id')
+            ->all();
+
+        $rangos = [];
+        foreach ($loteIds as $loteId) {
+            $rangos[$loteId] = (int) ($ids[$loteId] ?? PHP_INT_MAX);
+        }
+
+        return $rangos;
+    }
+
+    /**
      * Bloquea la existencia de un lote en una bodega. Con HOLDLOCK, si no existe se bloquea
      * el rango: nadie más puede crearla hasta que termine la transacción.
      */
