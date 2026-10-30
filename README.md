@@ -2,7 +2,47 @@
 
 [![CI/CD](https://github.com/felipe9121/farmart-inventario/actions/workflows/ci.yml/badge.svg)](https://github.com/felipe9121/farmart-inventario/actions/workflows/ci.yml)
 
-Prueba técnica: API Laravel + SQL Server 2022 + frontend React.
+Sistema de dispensación de medicamentos e inventario por bodega y lote para una IPS: API REST en
+Laravel 13 (PHP 8.4) sobre SQL Server 2022, frontend React + TypeScript, Docker y CI/CD en GitHub
+Actions. Es una prueba técnica: todos los datos son sintéticos.
+
+## Qué hace
+
+- **Dispensación** ligada a paciente y prescripción vigente, por **FEFO** y desde varios lotes, con
+  parciales acumuladas y sin exceder lo prescrito. Los productos de **control especial** exigen la
+  co-firma de un segundo regente, y crear una dispensación es **idempotente** (`Idempotency-Key`).
+- **Traslados** entre bodegas con máquina de estados: la mercancía sale del origen al despachar y entra
+  al destino al recibir, con **discrepancias**. Quien solicita no puede aprobar.
+- **Kardex inmutable**, protegido con triggers y permisos de BD. Las correcciones se hacen con ajustes
+  que llevan motivo.
+- **Stock nunca negativo**, también con concurrencia real: bloqueos en orden fijo y reintento ante
+  deadlock, verificados con procesos paralelos.
+- **Seguridad:** tokens con expiración, autorización por rol, datos de paciente **enmascarados** para el
+  auditor, **bitácora** de accesos, ningún dato personal en los logs y usuario de BD sin DDL.
+- **Alertas** de vencimiento (≤ 90 días) y de stock bajo el mínimo por bodega, más un **asistente con mock**
+  que responde dos preguntas sobre ellas.
+
+## Documentación
+
+| Documento | Contenido |
+|---|---|
+| [`docs/arquitectura.md`](docs/arquitectura.md) | Componentes, capas, modelo de datos (diagrama ER) y concurrencia |
+| [`docs/api.md`](docs/api.md) | Endpoints, roles, idempotencia y códigos de error |
+| [`docs/reglas-de-negocio.md`](docs/reglas-de-negocio.md) | Trazabilidad RN-01 a RN-11 → BD, código y pruebas |
+| [`docs/sustentacion.md`](docs/sustentacion.md) | Guion de demostración, preguntas probables y errores encontrados por las pruebas |
+| [`AI_USAGE.md`](AI_USAGE.md) | Cómo se usó la IA y cómo se verificó |
+| Este README | Arranque y **supuestos, decisiones y trade-offs** |
+
+## Estructura
+
+```
+backend/            API Laravel (Actions, Services, Policies, migraciones con CHECK/FK/triggers, Pest)
+frontend/           React + Vite (4 pantallas) e imagen nginx
+docker/sqlserver/   Scripts de inicialización: bases y login farmart_app
+scripts/            generar-env.sh (claves aleatorias)
+docs/               Documentación
+.github/workflows/  CI/CD
+```
 
 ## Levantar todo el sistema (un comando)
 
@@ -278,6 +318,8 @@ Calidad del frontend: `npm run lint`, `npm run typecheck`, `npm test`.
   para exigir el CI en verde antes de fusionar.
 
 ### Pruebas
+- **Estado actual:** 267 pruebas Pest en el backend (645 aserciones, contra SQL Server como `farmart_app`)
+  y 13 pruebas Vitest en el frontend. El CI las ejecuta en cada push.
 - `./vendor/bin/pest` corre todo. `--testsuite=Concurrencia` corre solo las pruebas con procesos PHP
   paralelos (`Concurrency::run`). Esa suite no usa `RefreshDatabase`, porque los otros procesos deben
   ver datos confirmados: recrea la base antes de cada prueba.
@@ -286,4 +328,20 @@ Calidad del frontend: `npm run lint`, `npm run typecheck`, `npm test`.
 - **Laravel 13 / PHP 8.4** (Laravel 13 exige PHP ≥ 8.3).
 - Conexión cifrada (ODBC Driver 18); `DB_TRUST_SERVER_CERTIFICATE=true` solo en local por el
   certificado autofirmado.
-- Las pruebas usan la base `farmart_test` en SQL Server (nunca SQLite), con `RefreshDatabase`.
+- Las pruebas usan la base `farmart_test` en SQL Server (nunca SQLite) con `RefrescaBaseDeDatos`:
+  migra como administrador y cada prueba corre en una transacción, como `farmart_app`, que se revierte al final.
+
+## Limitaciones y trabajo futuro
+
+- **Sin despliegue a un servidor:** el CD publica las imágenes en GHCR. El siguiente paso sería
+  desplegarlas con HTTPS, un certificado real para SQL Server y los secretos en un gestor de secretos.
+- **`main` sin protección:** convendría exigir el CI en verde antes de fusionar, trabajando con Pull
+  Requests.
+- **Traslados:** se piden por lote concreto. No hay asignación FEFO automática al despachar ni un flujo
+  para cerrar discrepancias (hoy se resuelven con ajustes).
+- **Ajustes sin `Idempotency-Key`:** RN-09 solo lo exige para dispensaciones.
+- **Token del frontend en `sessionStorage`:** la alternativa más robusta es Sanctum SPA con cookies
+  `httpOnly`.
+- **Asistente:** responde solo dos preguntas, con un mock determinista. Un modelo real se conectaría
+  detrás del contrato `ModeloLenguaje`.
+- **Sin gestión de usuarios por API:** los usuarios se crean con los seeders o en la BD.
