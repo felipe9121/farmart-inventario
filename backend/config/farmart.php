@@ -13,4 +13,10 @@ return [
     // Usuario de BD de la app, al que las migraciones le niegan UPDATE/DELETE sobre
     // tablas con historia (defensa en profundidad junto con los triggers).
     'usuario_bd_aplicacion' => env('DB_USERNAME', 'farmart_app'),
+
+    // Asistente de inventario: implementación de ModeloLenguaje. Solo existe 'simulado'
+    // (mock determinista); un modelo real se agregaría como otra implementación.
+    'asistente' => [
+        'modelo' => env('FARMART_ASISTENTE_MODELO', 'simulado'),
+    ],
 ];

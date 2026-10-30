@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AlertaController;
+use App\Http\Controllers\Api\AsistenteController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BitacoraAccesoController;
 use App\Http\Controllers\Api\DispensacionController;
@@ -31,6 +32,7 @@ Route::middleware(['auth:sanctum', 'activo'])->group(function () {
 
     Route::get('alertas/vencimientos', [AlertaController::class, 'vencimientos']);
     Route::get('alertas/stock-bajo', [AlertaController::class, 'stockBajo']);
+    Route::post('asistente/preguntas', [AsistenteController::class, 'preguntar'])->middleware('throttle:asistente');
 
     Route::get('traslados', [TrasladoController::class, 'index']);
     Route::post('traslados', [TrasladoController::class, 'store']);

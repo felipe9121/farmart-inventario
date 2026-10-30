@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Policies\AlertaPolicy;
+use App\Services\Asistente\ModeloLenguaje;
+use App\Services\Asistente\ModeloLenguajeSimulado;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use InvalidArgumentException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -18,7 +21,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(ModeloLenguaje::class, fn () => match (config('farmart.asistente.modelo')) {
+            'simulado' => new ModeloLenguajeSimulado,
+            default => throw new InvalidArgumentException('Modelo de asistente no soportado.'),
+        });
     }
 
     /**
@@ -29,6 +35,8 @@ class AppServiceProvider extends ServiceProvider
         // Fuerza bruta: 5 intentos por minuto por correo + IP.
         // RN-11: alertas y asistente (solo datos de inventario).
         Gate::define('ver-alertas', [AlertaPolicy::class, 'puedeVer']);
+
+        RateLimiter::for('asistente', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()?->getAuthIdentifier()));
 
         RateLimiter::for('login', fn (Request $request) => Limit::perMinute(5)
             ->by(mb_strtolower((string) $request->input('email')).'|'.$request->ip()));
