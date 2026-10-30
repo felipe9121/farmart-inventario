@@ -2,11 +2,27 @@
 
 Prueba técnica: API Laravel + SQL Server 2022 + frontend React.
 
+## Levantar todo el sistema (un comando)
+
+```bash
+cp .env.example .env
+# Editar .env: cambiar MSSQL_SA_PASSWORD y MSSQL_APP_PASSWORD, poner SEED_DEMO=true para datos
+# de demostración y generar APP_KEY:
+#   echo "base64:$(openssl rand -base64 32)"
+docker compose up -d --build
+# → http://localhost:8080  (usuarios de demostración más abajo)
+```
+
+Orden de arranque: `sqlserver` (con healthcheck) → `sqlserver-init` (bases y usuario `farmart_app`) →
+`migrate` (migraciones y semillas, con credenciales de admin) → `app` (PHP-FPM) → `web` (nginx, el único
+puerto publicado).
+
 ## Levantar el entorno (desarrollo)
 
 ```bash
 cp .env.example .env                    # cambiar MSSQL_SA_PASSWORD y MSSQL_APP_PASSWORD
 cp backend/.env.example backend/.env    # DB_PASSWORD = MSSQL_APP_PASSWORD, DB_ADMIN_PASSWORD = MSSQL_SA_PASSWORD
+docker compose run --rm backend composer install
 docker compose run --rm backend php artisan key:generate
 docker compose run --rm backend php artisan migrate:fresh --seed --database=sqlsrv_admin
 docker compose run --rm backend ./vendor/bin/pest
@@ -218,6 +234,27 @@ docker run --rm -it -u 1000:1000 -v "$PWD":/app -w /app --network farmart_defaul
 ```
 
 Calidad del frontend: `npm run lint`, `npm run typecheck`, `npm test`.
+
+### Docker
+- **Un solo `docker compose up`** levanta el sistema completo. Las migraciones son un servicio `migrate` de
+  una sola ejecución; con `SEED_DEMO=true` carga datos sintéticos **solo si la base está vacía** (el seeder
+  es idempotente y se niega a correr con `APP_ENV=production`).
+- **nginx es la única puerta de entrada:** sirve la SPA y envía `/api` y `/up` por FastCGI a PHP-FPM.
+  El contenedor `app` no publica puertos.
+- **Mínimo privilegio también en contenedores:**
+  - la clave de `sa` solo la reciben `sqlserver-init` y `migrate`; `app` se conecta como `farmart_app`;
+  - los procesos corren como `www-data`;
+  - `APP_DEBUG` es siempre `false`.
+- **Imagen de producción del backend:**
+  - sin dependencias de desarrollo y con OPcache sin revalidar;
+  - config, rutas y vistas se cachean al arrancar con las variables del contenedor;
+  - los logs van a `stderr` (`docker logs`).
+  - Excepción: **Faker** está en `require`, para que la demo se pueda sembrar desde la imagen.
+- **Perfil `dev`:** el contenedor de desarrollo (`backend`) solo arranca si se nombra (por ejemplo,
+  `docker compose run --rm backend …`).
+- **Demostración, no producción real:** `APP_ENV=demo` por defecto y `DB_TRUST_SERVER_CERTIFICATE=true`,
+  porque SQL Server usa un certificado autofirmado. Para producción real: `APP_ENV=production`, certificado
+  real, HTTPS delante de nginx y secretos en un gestor de secretos, no en `.env`.
 
 ### Pruebas
 - `./vendor/bin/pest` corre todo. `--testsuite=Concurrencia` corre solo las pruebas con procesos PHP
