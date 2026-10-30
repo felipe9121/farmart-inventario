@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
@@ -26,5 +27,17 @@ class Bodega extends Model
     protected function casts(): array
     {
         return ['activa' => 'boolean'];
+    }
+
+    /** @return HasMany<Existencia, $this> */
+    public function existencias(): HasMany
+    {
+        return $this->hasMany(Existencia::class);
+    }
+
+    /** @return HasMany<StockMinimo, $this> */
+    public function stockMinimos(): HasMany
+    {
+        return $this->hasMany(StockMinimo::class);
     }
 }
