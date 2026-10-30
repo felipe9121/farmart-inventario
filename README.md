@@ -1,17 +1,20 @@
 # FARTMAR IPS — Dispensación e inventarios
 
+[![CI/CD](https://github.com/felipe9121/farmart-inventario/actions/workflows/ci.yml/badge.svg)](https://github.com/felipe9121/farmart-inventario/actions/workflows/ci.yml)
+
 Prueba técnica: API Laravel + SQL Server 2022 + frontend React.
 
 ## Levantar todo el sistema (un comando)
 
 ```bash
-cp .env.example .env
-# Editar .env: cambiar MSSQL_SA_PASSWORD y MSSQL_APP_PASSWORD, poner SEED_DEMO=true para datos
-# de demostración y generar APP_KEY:
-#   echo "base64:$(openssl rand -base64 32)"
+SEED_DEMO=true scripts/generar-env.sh   # .env y backend/.env con claves aleatorias
 docker compose up -d --build
 # → http://localhost:8080  (usuarios de demostración más abajo)
 ```
+
+Para usar imágenes ya construidas en lugar de compilarlas, el CI publica
+`ghcr.io/felipe9121/farmart-backend` y `ghcr.io/felipe9121/farmart-frontend` (etiquetas `latest` y
+el SHA del commit).
 
 Orden de arranque: `sqlserver` (con healthcheck) → `sqlserver-init` (bases y usuario `farmart_app`) →
 `migrate` (migraciones y semillas, con credenciales de admin) → `app` (PHP-FPM) → `web` (nginx, el único
@@ -20,8 +23,7 @@ puerto publicado).
 ## Levantar el entorno (desarrollo)
 
 ```bash
-cp .env.example .env                    # cambiar MSSQL_SA_PASSWORD y MSSQL_APP_PASSWORD
-cp backend/.env.example backend/.env    # DB_PASSWORD = MSSQL_APP_PASSWORD, DB_ADMIN_PASSWORD = MSSQL_SA_PASSWORD
+scripts/generar-env.sh                  # o copiar los .env.example y poner las claves a mano
 docker compose run --rm backend composer install
 docker compose run --rm backend php artisan key:generate
 docker compose run --rm backend php artisan migrate:fresh --seed --database=sqlsrv_admin
@@ -255,6 +257,25 @@ Calidad del frontend: `npm run lint`, `npm run typecheck`, `npm test`.
 - **Demostración, no producción real:** `APP_ENV=demo` por defecto y `DB_TRUST_SERVER_CERTIFICATE=true`,
   porque SQL Server usa un certificado autofirmado. Para producción real: `APP_ENV=production`, certificado
   real, HTTPS delante de nginx y secretos en un gestor de secretos, no en `.env`.
+
+### CI/CD (GitHub Actions)
+`.github/workflows/ci.yml` se ejecuta en cada push y Pull Request:
+
+| Job | Qué verifica |
+|---|---|
+| `backend` | Pint, Larastan y Pest (Unit, Feature y Concurrencia) **contra SQL Server 2022**, como usuario `farmart_app` |
+| `frontend` | ESLint, chequeo de tipos, Vitest y build |
+| `imagenes` | Build de las imágenes de producción, `docker compose up` del stack completo y prueba de humo (login, alertas, asistente, token inválido) |
+
+- **Mismo entorno que en local:** el CI usa la misma imagen de desarrollo y los mismos servicios y
+  scripts de compose para SQL Server. Lo que pasa en CI es lo que pasa en la máquina del desarrollador.
+- **Sin contraseñas en el repo ni en el workflow:** cada ejecución genera claves aleatorias con
+  `scripts/generar-env.sh`.
+- **CD:** en un push a `main`, y solo si los tres jobs pasan, se publican las imágenes en GitHub Container
+  Registry con la etiqueta del commit y `latest`. Solo ese job tiene permiso `packages: write`.
+- **No hay despliegue a un servidor:** la prueba no incluye infraestructura. El paso siguiente sería
+  desplegar esas imágenes (por ejemplo, con `docker compose pull && up` en un servidor) y proteger `main`
+  para exigir el CI en verde antes de fusionar.
 
 ### Pruebas
 - `./vendor/bin/pest` corre todo. `--testsuite=Concurrencia` corre solo las pruebas con procesos PHP
