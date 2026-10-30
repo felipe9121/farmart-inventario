@@ -173,6 +173,27 @@ Idempotency-Key: 7f9c1a52-...
   - **Migraciones:** usan la conexión `sqlsrv_admin`.
   - **Pruebas:** **corren como `farmart_app`**; si pasan, la app funciona con esos permisos.
 
+### Alertas y asistente de inventario
+- **Alertas (RN-11):**
+  - `GET /api/alertas/vencimientos` (`?bodega_id`, `?dias`, 90 por defecto) incluye también los lotes
+    **ya vencidos que aún tienen stock**, porque hay que darlos de baja.
+  - `GET /api/alertas/stock-bajo` compara el mínimo de cada bodega con el **stock vigente**. Los lotes
+    vencidos no cuentan porque no se pueden dispensar.
+- **Asistente (con mock):** `POST /api/asistente/preguntas {"pregunta": "..."}`. Por decisión de alcance
+  responde **solo dos preguntas**: qué lotes vencen y qué productos están bajo el mínimo, en una bodega
+  o en todas.
+  - **El modelo solo interpreta.** `ModeloLenguaje` recibe la pregunta y el catálogo de bodegas y devuelve
+    la intención, la bodega y los días. No recibe datos de inventario ni de pacientes.
+  - **Los datos salen de la BD** (`AlertasInventario`) y **la respuesta se arma con plantillas**, así que
+    el modelo no puede inventar cifras. La respuesta incluye las filas que la respaldan.
+  - **El mock** (`ModeloLenguajeSimulado`) es determinista: funciona con palabras clave y no distingue
+    tildes ni mayúsculas. Si la pregunta no corresponde o es ambigua, no adivina: explica su alcance y
+    sugiere las dos preguntas.
+  - **Un modelo real** sería otra implementación del contrato, seleccionada con `FARMART_ASISTENTE_MODELO`;
+    no habría que cambiar nada más. Solo recibiría la pregunta y nombres de bodegas.
+  - **Privacidad:** la pregunta no se guarda ni se registra en logs, por si el usuario escribe datos
+    personales.
+
 ### Pruebas
 - `./vendor/bin/pest` corre todo. `--testsuite=Concurrencia` corre solo las pruebas con procesos PHP
   paralelos (`Concurrency::run`). Esa suite no usa `RefreshDatabase`, porque los otros procesos deben
