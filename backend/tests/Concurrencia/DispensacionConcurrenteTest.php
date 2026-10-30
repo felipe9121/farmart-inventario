@@ -23,7 +23,7 @@ use Tests\Support\Concurrente;
 */
 
 beforeEach(function () {
-    Artisan::call('migrate:fresh');
+    Artisan::call('migrate:fresh', ['--database' => 'sqlsrv_admin']);
 });
 
 function prescripcionCon(Producto ...$productos): Prescripcion

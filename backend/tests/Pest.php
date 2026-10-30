@@ -3,16 +3,17 @@
 declare(strict_types=1);
 
 use App\Exceptions\ReglaNegocioException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\AssertionFailedError;
+use Tests\Support\RefrescaBaseDeDatos;
 use Tests\TestCase;
 
 /*
-| Las pruebas Feature corren contra SQL Server (base farmart_test, ver phpunit.xml).
-| RefreshDatabase envuelve cada prueba en una transacción que se revierte al final.
+| Las pruebas Feature corren contra SQL Server (base farmart_test, ver phpunit.xml) con el
+| usuario de la app. RefrescaBaseDeDatos migra como administrador y envuelve cada prueba en
+| una transacción que se revierte al final.
 */
 pest()->extend(TestCase::class)
-    ->use(RefreshDatabase::class)
+    ->use(RefrescaBaseDeDatos::class)
     ->in('Feature');
 
 // Sin RefreshDatabase: los procesos paralelos deben ver datos confirmados.

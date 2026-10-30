@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 use App\Enums\AccionBitacora;
 use App\Models\BitacoraAccesoPaciente;
+use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\ComoAdministradorBd;
 
 it('registra búsquedas sin paciente', function () {
     $registro = BitacoraAccesoPaciente::factory()->create(['paciente_id' => null, 'accion' => AccionBitacora::Busqueda]);
@@ -21,17 +23,20 @@ it('rechaza en la BD acciones no definidas', function () {
     ]);
 })->throws(QueryException::class, 'ck_bitacora_accesos_accion');
 
-it('impide actualizar la bitácora en la BD', function () {
+it('el usuario de la app no tiene permiso de editar ni borrar la bitácora', function (string $operacion) {
     $registro = BitacoraAccesoPaciente::factory()->create();
+    $consulta = DB::table('bitacora_accesos_paciente')->where('id', $registro->id);
 
-    DB::table('bitacora_accesos_paciente')->where('id', $registro->id)->update(['accion' => 'BUSQUEDA']);
-})->throws(QueryException::class, 'bitacora_accesos_paciente es inmutable');
+    $operacion === 'update' ? $consulta->update(['accion' => 'BUSQUEDA']) : $consulta->delete();
+})->with(['update', 'delete'])->throws(QueryException::class, 'permission was denied');
 
-it('impide eliminar la bitácora en la BD', function () {
-    $registro = BitacoraAccesoPaciente::factory()->create();
+it('aun con permisos de administrador, el trigger impide editar o borrar la bitácora', function (string $operacion) {
+    ComoAdministradorBd::enTransaccion(function (Connection $db) use ($operacion) {
+        $consulta = $db->table('bitacora_accesos_paciente')->where('id', ComoAdministradorBd::insertarRegistroBitacora($db));
 
-    DB::table('bitacora_accesos_paciente')->where('id', $registro->id)->delete();
-})->throws(QueryException::class, 'bitacora_accesos_paciente es inmutable');
+        $operacion === 'update' ? $consulta->update(['accion' => 'CONSULTA_DETALLE']) : $consulta->delete();
+    });
+})->with(['update', 'delete'])->throws(QueryException::class, 'bitacora_accesos_paciente es inmutable');
 
 it('falla en el modelo al intentar eliminar', function () {
     BitacoraAccesoPaciente::factory()->create()->delete();

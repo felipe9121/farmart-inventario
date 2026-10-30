@@ -107,8 +107,31 @@ return [
             'host' => env('DB_HOST', 'localhost'),
             'port' => env('DB_PORT', '1433'),
             'database' => env('DB_DATABASE', 'farmart'),
-            'username' => env('DB_USERNAME', 'sa'),
+            'username' => env('DB_USERNAME', 'farmart_app'),
             'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            // ODBC Driver 18 cifra por defecto; en local el certificado es autofirmado.
+            'encrypt' => env('DB_ENCRYPT', 'yes'),
+            'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
+            // pdo_sqlsrv devuelve los enteros como string; así llegan como int y las
+            // comparaciones estrictas (===) entre IDs y cantidades funcionan.
+            'options' => extension_loaded('pdo_sqlsrv') ? [
+                PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE => true,
+            ] : [],
+        ],
+
+        // Conexión de administración: solo para migraciones (DDL, triggers, permisos).
+        // La app usa 'sqlsrv' con un usuario sin permisos de DDL.
+        'sqlsrv_admin' => [
+            'driver' => 'sqlsrv',
+            'url' => env('DB_ADMIN_URL'),
+            'host' => env('DB_HOST', 'localhost'),
+            'port' => env('DB_PORT', '1433'),
+            'database' => env('DB_DATABASE', 'farmart'),
+            'username' => env('DB_ADMIN_USERNAME', 'sa'),
+            'password' => env('DB_ADMIN_PASSWORD', ''),
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,

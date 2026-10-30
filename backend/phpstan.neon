@@ -11,3 +11,8 @@ parameters:
         - routes
         - tests
     tmpDir: storage/framework/cache/phpstan
+    ignoreErrors:
+        # Pest aplica el trait en tests/Pest.php (pest()->use()), que PHPStan no rastrea.
+        -
+            identifier: trait.unused
+            path: tests/Support/RefrescaBaseDeDatos.php

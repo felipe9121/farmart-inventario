@@ -18,7 +18,7 @@ use Tests\Support\Concurrente;
 use Tests\Support\EscenarioTraslado;
 
 beforeEach(function () {
-    Artisan::call('migrate:fresh');
+    Artisan::call('migrate:fresh', ['--database' => 'sqlsrv_admin']);
 });
 
 it('solo una de varias aprobaciones simultáneas tiene éxito', function () {

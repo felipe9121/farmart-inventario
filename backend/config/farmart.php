@@ -9,4 +9,8 @@ return [
 
     // Intentos de una transacción de stock cuando SQL Server la elige como víctima de un deadlock.
     'intentos_transaccion' => (int) env('FARMART_INTENTOS_TRANSACCION', 3),
+
+    // Usuario de BD de la app, al que las migraciones le niegan UPDATE/DELETE sobre
+    // tablas con historia (defensa en profundidad junto con los triggers).
+    'usuario_bd_aplicacion' => env('DB_USERNAME', 'farmart_app'),
 ];

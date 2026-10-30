@@ -7,8 +7,10 @@ use App\Models\Bodega;
 use App\Models\MovimientoKardex;
 use App\Models\Producto;
 use App\Models\TrasladoItem;
+use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\ComoAdministradorBd;
 
 it('registra una entrada con fecha generada por la BD', function () {
     $movimiento = MovimientoKardex::factory()->create();
@@ -16,31 +18,44 @@ it('registra una entrada con fecha generada por la BD', function () {
     expect($movimiento->fresh()->created_at)->not->toBeNull();
 });
 
-it('impide actualizar movimientos en la BD (RN-06)', function () {
-    $movimiento = MovimientoKardex::factory()->create();
+describe('inmutabilidad (RN-06)', function () {
+    it('el usuario de la app no tiene permiso de editar ni borrar el kardex', function (string $operacion) {
+        $movimiento = MovimientoKardex::factory()->create();
+        $consulta = DB::table('movimientos_kardex')->where('id', $movimiento->id);
 
-    DB::table('movimientos_kardex')->where('id', $movimiento->id)->update(['cantidad' => 1]);
-})->throws(QueryException::class, 'movimientos_kardex es inmutable');
+        $operacion === 'update' ? $consulta->update(['cantidad' => 1]) : $consulta->delete();
+    })->with(['update', 'delete'])->throws(QueryException::class, 'permission was denied');
 
-it('impide eliminar movimientos en la BD (RN-06)', function () {
-    $movimiento = MovimientoKardex::factory()->create();
+    it('aun con permisos de administrador, el trigger impide actualizar', function () {
+        ComoAdministradorBd::enTransaccion(function (Connection $db) {
+            $id = ComoAdministradorBd::insertarMovimiento($db);
+            $db->table('movimientos_kardex')->where('id', $id)->update(['cantidad' => 1]);
+        });
+    })->throws(QueryException::class, 'movimientos_kardex es inmutable');
 
-    DB::table('movimientos_kardex')->where('id', $movimiento->id)->delete();
-})->throws(QueryException::class, 'no se permite eliminar movimientos');
+    it('aun con permisos de administrador, el trigger impide eliminar', function () {
+        ComoAdministradorBd::enTransaccion(function (Connection $db) {
+            $id = ComoAdministradorBd::insertarMovimiento($db);
+            $db->table('movimientos_kardex')->where('id', $id)->delete();
+        });
+    })->throws(QueryException::class, 'no se permite eliminar movimientos');
 
-it('revierte la transacción completa cuando se intenta editar el kardex', function () {
-    $movimiento = MovimientoKardex::factory()->create();
-    $bodegasAntes = Bodega::query()->count();
+    it('el THROW del trigger revierte la transacción completa', function () {
+        $restantes = ComoAdministradorBd::enTransaccion(function (Connection $db) {
+            $id = ComoAdministradorBd::insertarMovimiento($db);
 
-    try {
-        DB::table('movimientos_kardex')->where('id', $movimiento->id)->update(['cantidad' => 1]);
-    } catch (QueryException) {
-        // Esperado: el THROW del trigger aborta la transacción en el servidor.
-    }
+            try {
+                $db->table('movimientos_kardex')->where('id', $id)->update(['cantidad' => 1]);
+            } catch (QueryException) {
+                // Esperado: el THROW aborta la transacción en el servidor.
+            }
 
-    expect($bodegasAntes)->toBe(1)
-        ->and(Bodega::query()->count())->toBe(0)
-        ->and(DB::table('movimientos_kardex')->count())->toBe(0);
+            return [$db->table('bodegas')->where('codigo', 'ADM-1')->count(), $db->table('movimientos_kardex')->where('id', $id)->count()];
+        });
+
+        // Ni el movimiento ni la bodega insertada antes en la misma transacción sobreviven.
+        expect($restantes)->toBe([0, 0]);
+    });
 });
 
 it('falla en el modelo antes de llegar a la BD', function () {

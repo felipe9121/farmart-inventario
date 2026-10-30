@@ -20,7 +20,8 @@ services:
       retries: 10
       start_period: 30s
 
-  # Crea las bases de la app y de pruebas (idempotente) y termina.
+  # Crea las bases de la app y de pruebas y el usuario de la app con permisos mínimos
+  # (idempotente) y termina.
   sqlserver-init:
     image: mcr.microsoft.com/mssql/server:2022-latest
     depends_on:
@@ -30,13 +31,18 @@ services:
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Define MSSQL_SA_PASSWORD en .env (ver .env.example)}
       DB_DATABASE: ${DB_DATABASE:-farmart}
       DB_TEST_DATABASE: ${DB_TEST_DATABASE:-farmart_test}
+      MSSQL_APP_USER: ${MSSQL_APP_USER:-farmart_app}
+      MSSQL_APP_PASSWORD: ${MSSQL_APP_PASSWORD:?Define MSSQL_APP_PASSWORD en .env (ver .env.example)}
+    volumes:
+      - ./docker/sqlserver:/scripts:ro
     entrypoint:
       - /bin/bash
       - -c
       - |
+        sql() { /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -b "$$@"; }
+        sql -v APP_USER="$$MSSQL_APP_USER" APP_PASSWORD="$$MSSQL_APP_PASSWORD" -i /scripts/login-app.sql || exit 1
         for db in "$$DB_DATABASE" "$$DB_TEST_DATABASE"; do
-          /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -b \
-            -Q "IF DB_ID(N'$$db') IS NULL CREATE DATABASE [$$db];" || exit 1
+          sql -v DB="$$db" APP_USER="$$MSSQL_APP_USER" -i /scripts/base-y-usuario.sql || exit 1
           echo "Base $$db lista"
         done
     restart: "no"
