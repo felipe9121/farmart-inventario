@@ -1,0 +1,30 @@
+# Trazabilidad de las reglas de negocio
+
+Por cada regla: qué la garantiza en la **base de datos** (última barrera, aunque falle la app), qué la
+garantiza en el **código** y qué **pruebas** la verifican contra SQL Server. Las rutas de las pruebas
+son relativas a `backend/tests/` (o a `frontend/src/` cuando se indica).
+
+| Regla | Base de datos | Código | Pruebas |
+|---|---|---|---|
+| **RN-01** Existencia = bodega + producto + lote; lote vencido nunca se dispensa ni traslada | `uq_existencias_bodega_lote`; FK compuesta `fk_existencias_lote_producto` → `uq_lotes_id_producto` | `Lote::estaVencido()` con `FechaNegocio` (día en Colombia); FEFO descarta vencidos; `CrearTraslado` y `DespacharTraslado` rechazan `LOTE_VENCIDO` | `Feature/Database/ExistenciasTest`, `Feature/Inventario/InventarioServiceTest`, `Feature/Traslados/*`, `Feature/FechaNegocioTest` |
+| **RN-02** Dispensación FEFO, puede tomar de varios lotes | Un `dispensacion_items` por lote (`uq_dispensacion_items_lote`) | `InventarioService::asignarFefo()`: bloquea las candidatas y reparte por fecha de vencimiento | `Feature/Inventario/InventarioServiceTest`, `Feature/Dispensaciones/RegistrarDispensacionTest` |
+| **RN-03** Stock nunca negativo; `lockForUpdate` en transacción; orden de bloqueo fijo y reintento | `ck_existencias_cantidad` (>= 0), `ck_movimientos_kardex_saldo` | `lockForUpdate` (UPDLOCK + HOLDLOCK); orden documento → ítems → existencias (producto_id, id); `Transaccion::conReintento` ante el deadlock 1205 | `Concurrencia/DispensacionConcurrenteTest` (falla si se quita el bloqueo), `Concurrencia/TrasladoConcurrenteTest` |
+| **RN-04** Ligada a paciente y prescripción vigente; no exceder lo prescrito; parciales acumuladas | `ck_prescripcion_items_cantidad_dispensada` (0..prescrita), `ck_prescripciones_vigencia` | `RegistrarDispensacion`: paciente de la prescripción, vigencia por fecha de negocio, acumulado con el ítem bloqueado | `Feature/Database/PrescripcionesTest`, `Feature/Dispensaciones/RegistrarDispensacionTest` |
+| **RN-05** Control especial requiere autorización de un segundo regente | `ck_dispensaciones_autorizador_distinto`, `ck_dispensaciones_autorizacion_completa` | Co-firma: regente activo, distinto del dispensador, revalidada con los datos bloqueados; límite de intentos (429) | `Feature/Dispensaciones/RegistrarDispensacionTest` (describe *control especial*), `Feature/Dispensaciones/DispensacionApiTest` |
+| **RN-06** Todo cambio de stock genera kardex inmutable; correcciones = ajuste con motivo | Triggers `tr_movimientos_kardex_no_update/no_delete` (`THROW`); `DENY UPDATE, DELETE` al usuario de la app; `ck_movimientos_kardex_motivo_ajuste`, `_signo`, `_referencia`; UNIQUE filtrados por ítem | `InventarioService` es el único que cambia stock y siempre escribe el movimiento; exige transacción abierta; `RegistrarAjuste` | `Feature/Database/KardexTest` (permisos y triggers), `Feature/Database/PermisosBdTest`, `Feature/Inventario/AjusteTest`, `Feature/Database/SeedersTest` (kardex cuadra) |
+| **RN-07** Estados del traslado; sale al despachar, entra al recibir; lo no recibido = discrepancia | `ck_traslados_estado`, `ck_traslados_estado_coherente`, `ck_traslados_anulacion`; `cantidad_discrepancia` calculada `PERSISTED`; `uq_movimientos_kardex_traslado_item_tipo` | `EstadoTraslado::puedePasarA()`; cada transición bloquea el traslado (409 si no aplica); `DespacharTraslado` / `RecibirTraslado` | `Unit/EstadoTrasladoTest`, `Feature/Database/TrasladosTest`, `Feature/Traslados/*`, `Concurrencia/TrasladoConcurrenteTest` |
+| **RN-08** Quien solicita no puede aprobar | `ck_traslados_aprobador_distinto` | `AprobarTraslado` (403); `TrasladoPolicy::aprobar` solo para regentes; la UI oculta el botón | `Feature/Traslados/FlujoTrasladoTest`, `Feature/Traslados/TrasladoApiTest`, `frontend/src/roles.test.ts` |
+| **RN-09** Crear dispensación es idempotente (`Idempotency-Key`, UNIQUE por usuario + llave) | `uq_dispensaciones_idempotencia` (UNIQUE **filtrado** `WHERE idempotency_key IS NOT NULL`), `ck_dispensaciones_idempotencia` | Middleware `idempotencia` (400); huella del payload (422 si cambia el contenido); carrera resuelta capturando la violación del UNIQUE | `Feature/Dispensaciones/*`, `Concurrencia/DispensacionConcurrenteTest`, `frontend/src/pantallas/logicaDispensacion.test.ts` |
+| **RN-10** Datos de paciente sensibles: acceso por rol, enmascarado para auditor, bitácora, nada en logs | Bitácora inmutable (triggers + `DENY`); sin DDL para la app | `PacientePolicy` (el admin no accede); `PacienteResource` enmascara; `BitacoraAccesos` (también en la transacción de la dispensación); `ErrorBaseDatos` quita los valores de los errores de SQL; `zend.exception_ignore_args`; `#[SensitiveParameter]`; `no-store` | `Feature/Seguridad/*`, `Unit/EnmascararTest`, `Feature/Seguridad/LogsSinDatosPersonalesTest` |
+| **RN-11** Alertas de lotes que vencen en ≤ 90 días y de stock bajo el mínimo por bodega | `stock_minimos` con `uq_stock_minimos_bodega_producto` | `AlertasInventario` (incluye los vencidos con stock; el mínimo se compara con el stock vigente); asistente sobre las mismas consultas | `Feature/Alertas/AlertasInventarioTest`, `Feature/Asistente/AsistenteTest`, `Unit/Asistente/ModeloLenguajeSimuladoTest` |
+
+## Reglas que no puede garantizar la base de datos (y por qué)
+
+- **"Hoy" (lote vencido, prescripción vigente):** un `CHECK` solo se evalúa al escribir su propia fila,
+  pero un lote se vence con el paso del tiempo, sin que nadie lo modifique. Además, la regla relaciona
+  dos tablas: la fecha de la dispensación o el traslado con la fecha de vencimiento del lote. Por eso se
+  valida en la aplicación, con la fecha en `America/Bogota`, y con la fila bloqueada.
+- **"El autorizador es regente":** depende de otra tabla (`users.rol`), y un `CHECK` solo ve la fila
+  actual. Se valida en la acción. La BD sí garantiza que el autorizador sea distinto del dispensador.
+- **Producto del ítem de dispensación = producto del lote:** son dos tablas sin FK compuesta posible
+  entre ellas. Lo garantiza FEFO, que solo busca lotes del producto del ítem.
