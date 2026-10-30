@@ -24,8 +24,24 @@ Preparación: `SEED_DEMO=true scripts/generar-env.sh && docker compose up -d --b
    `RECIBIDO_PARCIAL`, con su discrepancia. Si un regente solicita el traslado, ese mismo regente no ve
    "aprobar".
 6. **Alertas y asistente (RN-11).** Pantalla de alertas: lotes vencidos con stock y productos bajo el
-   mínimo en la Sede Sur. Preguntar al asistente "¿Qué productos están bajo el mínimo en la Farmacia Sede
-   Sur?" y luego algo fuera de su alcance.
+   mínimo en la Sede Sur.
+
+   El asistente está **oculto en la pantalla** (`MOSTRAR_ASISTENTE = false` en
+   `frontend/src/pantallas/Alertas.tsx`), pero el backend sigue activo. Hay dos formas de mostrarlo:
+   - **En la pantalla:** antes de la sustentación, poner `MOSTRAR_ASISTENTE = true`, ejecutar
+     `docker compose up -d --build --force-recreate migrate app web` y recargar con `Ctrl + F5`.
+     Preguntar "¿Qué productos están bajo el mínimo en la Farmacia Sede Sur?" y luego algo fuera de su
+     alcance.
+   - **Sin cambiar nada,** con `curl` desde la terminal de WSL:
+     ```bash
+     TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' \
+       -d '{"email":"regente1@farmart.test","password":"password"}' \
+       | python3 -c 'import sys, json; print(json.load(sys.stdin)["token"])')
+     curl -s -X POST localhost:8080/api/asistente/preguntas -H "Authorization: Bearer $TOKEN" \
+       -H 'Accept: application/json' -H 'Content-Type: application/json' \
+       -d '{"pregunta":"¿Qué productos están bajo el mínimo en la Farmacia Sede Sur?"}' \
+       | python3 -c 'import sys, json; print(json.load(sys.stdin)["data"]["respuesta"])'
+     ```
 7. **Kardex inmutable (RN-06).** En `sqlcmd`, como `farmart_app`: el `UPDATE movimientos_kardex …` falla
    por permisos. Como `sa`: falla por el trigger. Mostrar `KardexTest`.
 8. **CI.** Mostrar el badge en verde y un run de GitHub Actions: Pest contra SQL Server, incluida la

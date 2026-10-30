@@ -237,6 +237,9 @@ Idempotency-Key: 7f9c1a52-...
     **ya vencidos que aún tienen stock**, porque hay que darlos de baja.
   - `GET /api/alertas/stock-bajo` compara el mínimo de cada bodega con el **stock vigente**. Los lotes
     vencidos no cuentan porque no se pueden dispensar.
+- **El asistente está oculto en el frontend** con un interruptor (`MOSTRAR_ASISTENTE = false` en
+  `frontend/src/pantallas/Alertas.tsx`): su código se conserva y basta poner `true` para mostrarlo. El
+  endpoint sigue activo y probado. No se comentó la línea porque `noUnusedLocals` haría fallar el build.
 - **Asistente (con mock):** `POST /api/asistente/preguntas {"pregunta": "..."}`. Por decisión de alcance
   responde **solo dos preguntas**: qué lotes vencen y qué productos están bajo el mínimo, en una bodega
   o en todas.
